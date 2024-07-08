@@ -10,7 +10,7 @@ build:
     - torchaudio
     - torchsde
     - einops
-    - transformers>=4.25.1
+    - transformers>=4.26.1
     - safetensors>=0.3.0
     - aiohttp
     - accelerate
@@ -24,8 +24,10 @@ build:
     - kornia>=0.7.1
     - websocket-client==1.6.3
 
-    # layerdiffuse
-    - diffusers>=0.25.0
+    # Kolors
+    - diffusers>=0.28.2
+    - sentencepiece
+    - cpm-kernels
 
     # fix for pydantic issues in cog
     # https://github.com/replicate/cog/issues/1623
