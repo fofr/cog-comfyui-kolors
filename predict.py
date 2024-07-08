@@ -26,17 +26,19 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
+
 class Predictor(BasePredictor):
     def setup(self):
         self.comfyUI = ComfyUI("127.0.0.1:8188")
         self.comfyUI.start_server(OUTPUT_DIR, INPUT_DIR)
 
-        # Give a list of weights filenames to download during setup
-        with open(api_json_file, "r") as file:
-            workflow = json.loads(file.read())
         self.comfyUI.handle_weights(
-            workflow,
-            weights_to_download=[],
+            {},
+            weights_to_download=[
+                "checkpoints/chatglm3-fp16.safetensors",
+                "Kolors",
+                "sdxl_vae.safetensors",
+            ],
         )
 
     def filename_with_extension(self, input_file, prefix):
@@ -52,17 +54,18 @@ class Predictor(BasePredictor):
 
     # Update nodes in the JSON workflow to modify your workflow based on the given inputs
     def update_workflow(self, workflow, **kwargs):
-        # Below is an example showing how to get the node you need and update the inputs
+        prompts = workflow["3"]["inputs"]
+        prompts["prompt"] = kwargs["prompt"]
+        prompts["negative_prompt"] = f"nsfw, {kwargs['negative_prompt']}"
+        prompts["num_images_per_prompt"] = kwargs["number_of_images"]
 
-        # positive_prompt = workflow["6"]["inputs"]
-        # positive_prompt["text"] = kwargs["prompt"]
-
-        # negative_prompt = workflow["7"]["inputs"]
-        # negative_prompt["text"] = f"nsfw, {kwargs['negative_prompt']}"
-
-        # sampler = workflow["3"]["inputs"]
-        # sampler["seed"] = kwargs["seed"]
-        pass
+        sampler = workflow["2"]["inputs"]
+        sampler["seed"] = kwargs["seed"]
+        sampler["width"] = kwargs["width"]
+        sampler["height"] = kwargs["height"]
+        sampler["steps"] = kwargs["steps"]
+        sampler["cfg"] = kwargs["cfg"]
+        sampler["scheduler"] = kwargs["scheduler"]
 
     def predict(
         self,
@@ -73,9 +76,47 @@ class Predictor(BasePredictor):
             description="Things you do not want to see in your image",
             default="",
         ),
-        image: Path = Input(
-            description="An input image",
-            default=None,
+        number_of_images: int = Input(
+            description="Number of images to generate",
+            default=1,
+            ge=1,
+            le=10,
+        ),
+        width: int = Input(
+            description="Width of the image",
+            default=1024,
+            ge=512,
+            le=2048,
+        ),
+        height: int = Input(
+            description="Height of the image",
+            default=1024,
+            ge=512,
+            le=2048,
+        ),
+        steps: int = Input(
+            description="Number of inference steps",
+            default=25,
+            ge=1,
+            le=50,
+        ),
+        cfg: float = Input(
+            description="Guidance scale",
+            default=5,
+            ge=0,
+            le=20,
+        ),
+        scheduler: str = Input(
+            description="Scheduler",
+            default="EulerDiscreteScheduler",
+            choices=[
+                "EulerDiscreteScheduler",
+                "EulerAncestralDiscreteScheduler",
+                "DPMSolverMultistepScheduler",
+                "DPMSolverMultistepScheduler_SDE_karras",
+                "UniPCMultistepScheduler",
+                "DEISMultistepScheduler",
+            ],
         ),
         output_format: str = optimise_images.predict_output_format(),
         output_quality: int = optimise_images.predict_output_quality(),
@@ -83,13 +124,7 @@ class Predictor(BasePredictor):
     ) -> List[Path]:
         """Run a single prediction on the model"""
         self.comfyUI.cleanup(ALL_DIRECTORIES)
-
-        # Make sure to set the seeds in your workflow
         seed = seed_helper.generate(seed)
-
-        if image:
-            image_filename = self.filename_with_extension(image, "image")
-            self.handle_input_file(image_filename)
 
         with open(api_json_file, "r") as file:
             workflow = json.loads(file.read())
@@ -98,13 +133,17 @@ class Predictor(BasePredictor):
             workflow,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_filename=image_filename,
             seed=seed,
+            number_of_images=number_of_images,
+            width=width,
+            height=height,
+            steps=steps,
+            cfg=cfg,
+            scheduler=scheduler,
         )
 
-        wf = self.comfyUI.load_workflow(workflow)
         self.comfyUI.connect()
-        self.comfyUI.run_workflow(wf)
+        self.comfyUI.run_workflow(workflow)
 
         return optimise_images.optimise_image_files(
             output_format, output_quality, self.comfyUI.get_files(OUTPUT_DIR)
