@@ -61,8 +61,8 @@ class Predictor(BasePredictor):
 
         sampler = workflow["2"]["inputs"]
         sampler["seed"] = kwargs["seed"]
-        sampler["width"] = kwargs["width"]
-        sampler["height"] = kwargs["height"]
+        sampler["width"] = kwargs["width"] - (kwargs["width"] % 8)
+        sampler["height"] = kwargs["height"] - (kwargs["height"] % 8)
         sampler["steps"] = kwargs["steps"]
         sampler["cfg"] = kwargs["cfg"]
         sampler["scheduler"] = kwargs["scheduler"]
